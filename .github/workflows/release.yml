@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version and download URL in module.json
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/module.zip"
+          jq --arg v "$VERSION" --arg u "$URL" '.version = $v | .download = $u' module.json > module.tmp
+          mv module.tmp module.json
+
+      - name: Build module.zip
+        run: zip -r module.zip module.json scripts styles LICENSE README.md
+
+      - name: Attach module.json and module.zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" module.json module.zip --clobber
