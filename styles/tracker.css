@@ -1,0 +1,18 @@
+#magic-item-tracker-app .window-content { overflow-y: auto; }
+.mit-tier { margin-bottom: 1rem; }
+.mit-tier h3 { display: flex; align-items: center; gap: 0.5rem; }
+.mit-badge { font-size: 0.75rem; padding: 0 0.4rem; border-radius: 3px; background: #3c6e8f; color: #fff; }
+.mit-row { display: grid; grid-template-columns: 90px 1fr 60px; align-items: center; gap: 0.5rem; padding: 0.25rem 0; }
+.mit-dots { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.mit-dot { width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
+.mit-awarded.mit-permanent { background: #1d9e75; }
+.mit-purchased.mit-permanent { background: #d85a30; }
+.mit-awarded.mit-consumable { border: 4px solid #1d9e75; }
+.mit-purchased.mit-consumable { border: 4px solid #d85a30; }
+.mit-empty { border: 1.5px dashed #888; }
+.mit-divider { width: 2px; height: 18px; background: #888; margin: 0 4px; }
+.mit-count { text-align: right; }
+.mit-over { color: #c27c0e; font-weight: bold; }
+.mit-none { opacity: 0.6; }
+.mit-ledger { width: 100%; font-size: 0.85rem; }
+.mit-ledger a[data-action] { cursor: pointer; }
