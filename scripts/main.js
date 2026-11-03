@@ -63,6 +63,10 @@ Hooks.once("init", () => {
 const RARITIES = ["common", "uncommon", "rare", "veryRare", "legendary"];
 const pendingPurchases = new Set();
 
+function realName(item) {
+  return item._source?.name ?? item.name;
+}
+
 function getActiveCharacters() {
   const ids = game.settings.get(MODULE_ID, "activePlayers");
   const pcs = game.actors.filter(a => a.type === "character" && a.hasPlayerOwner);
@@ -174,7 +178,7 @@ const RARITY_LABELS = { common: "Common", uncommon: "Uncommon", rare: "Rare", ve
 
 function dot(item) {
   if (!item) return `<span class="mit-dot mit-empty"></span>`;
-  const tip = Handlebars.escapeExpression(`${item.name} — ${item.recipient}`);
+  const tip = Handlebars.escapeExpression(`${realName(item)} — ${item.recipient}`);
   return `<span class="mit-dot mit-${item.source} mit-${item.kind}" data-tooltip="${tip}"></span>`;
 }
 
@@ -358,7 +362,7 @@ Hooks.on("createItem", (item, options, userId) => {
   const actor = item.parent;
   if (!(actor instanceof Actor) || actor.type !== "character" || !actor.hasPlayerOwner) return;
   if (!RARITIES.includes(item.system.rarity)) return;
-  if (getIgnoredNames().has(item.name.toLowerCase())) return;
+  if (getIgnoredNames().has(realName(item).toLowerCase())) return;
 
   const existing = item.getFlag(MODULE_ID, "awardId");
     if (existing) {
@@ -372,7 +376,7 @@ Hooks.on("createItem", (item, options, userId) => {
     const kind = item.type === "consumable" ? "consumable" : "permanent";
     const quantity = kind === "consumable" ? Math.max(1, item.system.quantity ?? 1) : 1;
     const entry = await addEntry({
-      name: item.name, rarity: item.system.rarity, kind, quantity, source, actor,
+      name: realName(item), rarity: item.system.rarity, kind, quantity, source, actor,
       partyLevel: getPartyLevel(getActiveCharacters())
     });
     await item.setFlag(MODULE_ID, "awardId", entry.awardId);
@@ -406,9 +410,9 @@ Hooks.on("item-piles-preTradeItems", (sellingActor, sellerUpdates, buyingActor, 
   for (const delta of buyerUpdates.itemDeltas ?? []) {
     const item = buyingActor.items.get(delta.item._id);
     if (!item || delta.quantity <= 0) continue;
-    if (!RARITIES.includes(item.system.rarity) || ignored.has(item.name.toLowerCase())) continue;
+    if (!RARITIES.includes(item.system.rarity) || ignored.has(realName(item).toLowerCase())) continue;
     queueLedger(() => addEntry({
-      name: item.name, rarity: item.system.rarity,
+      name: realName(item), rarity: item.system.rarity,
       kind: item.type === "consumable" ? "consumable" : "permanent",
       quantity: delta.quantity, source: "purchased", actor: buyingActor,
       partyLevel: getPartyLevel(getActiveCharacters())
@@ -417,9 +421,9 @@ Hooks.on("item-piles-preTradeItems", (sellingActor, sellerUpdates, buyingActor, 
 });
 
 function logStackAward(item, actor, quantity) {
-  if (!RARITIES.includes(item.system.rarity) || getIgnoredNames().has(item.name.toLowerCase())) return;
+  if (!RARITIES.includes(item.system.rarity) || getIgnoredNames().has(realName(item).toLowerCase())) return;
   queueLedger(() => addEntry({
-    name: item.name, rarity: item.system.rarity,
+    name: realName(item), rarity: item.system.rarity,
     kind: item.type === "consumable" ? "consumable" : "permanent",
     quantity, source: "awarded", actor,
     partyLevel: getPartyLevel(getActiveCharacters())
@@ -433,10 +437,10 @@ function isPC(actor) {
 function onPileTransfer(sourceActor, sourceUpdates, targetActor, targetUpdates) {
   if (!game.user.isGM || !isPC(targetActor) || isPC(sourceActor)) return;
   if (game.itempiles?.API?.isItemPileMerchant(sourceActor)) return;
-  const loggedNames = new Set(sourceActor.items.filter(i => i.getFlag(MODULE_ID, "awardId")).map(i => i.name));
+  const loggedNames = new Set(sourceActor.items.filter(i => i.getFlag(MODULE_ID, "awardId")).map(i => realName(i)));
   for (const delta of targetUpdates.itemDeltas ?? []) {
     const item = targetActor.items.get(delta.item._id);
-    if (!item || delta.quantity <= 0 || loggedNames.has(item.name)) continue;
+    if (!item || delta.quantity <= 0 || loggedNames.has(realName(item))) continue;
     logStackAward(item, targetActor, delta.quantity);
   }
 }
@@ -459,8 +463,8 @@ function reconcileState() {
   const ignored = getIgnoredNames();
   const ignoredItems = new Set(game.settings.get(MODULE_ID, "ignoredItems"));
   const items = game.actors.filter(isPC).flatMap(a =>
-    a.items.filter(i => RARITIES.includes(i.system.rarity) && !ignored.has(i.name.toLowerCase())
-      && !ignoredItems.has(`${a.id}|${i.name.toLowerCase()}`)));
+    a.items.filter(i => RARITIES.includes(i.system.rarity) && !ignored.has(realName(i).toLowerCase())
+      && !ignoredItems.has(`${a.id}|${realName(i).toLowerCase()}`)));
   const holders = new Map();
   for (const i of items) {
     const id = i.getFlag(MODULE_ID, "awardId");
@@ -479,7 +483,7 @@ async function autoRelink() {
   const { unflagged, orphans } = reconcileState();
   let relinked = 0;
   for (const item of unflagged) {
-    const name = item.name.toLowerCase();
+    const name = realName(item).toLowerCase();
     const idx = orphans.findIndex(e =>
       e.recipientId === item.parent.id && e.rarity === item.system.rarity &&
       [e.name, ...(e.aliases ?? [])].some(n => n.toLowerCase() === name));
@@ -504,7 +508,7 @@ Hooks.on("ddb-importer.characterProcessDataComplete", ({ actor }) => {
 function renderReview(state) {
   const esc = Handlebars.escapeExpression;
   const rows = [];
-  for (const i of state.unflagged) rows.push(`<tr><td>${esc(i.name)}</td><td>${RARITY_LABELS[i.system.rarity]}</td>
+  for (const i of state.unflagged) rows.push(`<tr><td>${esc(realName(i))}</td><td>${RARITY_LABELS[i.system.rarity]}</td>
     <td>${esc(i.parent.name)}</td><td>Not in ledger</td><td>
     <a data-action="reviewAward" data-uuid="${i.uuid}" data-tooltip="Log as award"><i class="fa-solid fa-gift"></i></a>
     <a data-action="reviewPurchase" data-uuid="${i.uuid}" data-tooltip="Log as purchase"><i class="fa-solid fa-coins"></i></a>
@@ -514,7 +518,7 @@ function renderReview(state) {
     <td>${esc(e.recipientName)}</td><td>Missing from sheets</td><td>
     <a data-action="reviewDismiss" data-award-id="${e.awardId}" data-tooltip="Keep counting it"><i class="fa-solid fa-check"></i></a>
     <a data-action="deleteEntry" data-award-id="${e.awardId}" data-tooltip="Delete entry"><i class="fa-solid fa-trash"></i></a></td></tr>`);
-  for (const [, list] of state.duplicates) for (const i of list.slice(1)) rows.push(`<tr><td>${esc(i.name)}</td>
+  for (const [, list] of state.duplicates) for (const i of list.slice(1)) rows.push(`<tr><td>${esc(realName(i))}</td>
     <td>${RARITY_LABELS[i.system.rarity]}</td><td>${esc(i.parent.name)}</td><td>Copy of another PC's item</td><td>
     <a data-action="reviewAward" data-uuid="${i.uuid}" data-tooltip="Count as a new award"><i class="fa-solid fa-gift"></i></a></td></tr>`);
   const body = rows.length
@@ -534,7 +538,7 @@ async function logReviewItem(uuid, source) {
     const kind = item.type === "consumable" ? "consumable" : "permanent";
     const quantity = kind === "consumable" ? Math.max(1, item.system.quantity ?? 1) : 1;
     const entry = await addEntry({
-      name: item.name, rarity: item.system.rarity, kind, quantity, source, actor: item.parent,
+      name: realName(item), rarity: item.system.rarity, kind, quantity, source, actor: item.parent,
       partyLevel: getPartyLevel(getActiveCharacters())
     });
     await item.setFlag(MODULE_ID, "awardId", entry.awardId);
@@ -555,7 +559,7 @@ async function reviewIgnore(event, target) {
   const item = fromUuidSync(target.dataset.uuid);
   if (!item) return;
   const list = game.settings.get(MODULE_ID, "ignoredItems");
-  await game.settings.set(MODULE_ID, "ignoredItems", [...list, `${item.parent.id}|${item.name.toLowerCase()}`]);
+  await game.settings.set(MODULE_ID, "ignoredItems", [...list, `${item.parent.id}|${realName(item).toLowerCase()}`]);
 }
 
 async function reviewDismiss(event, target) {
@@ -570,7 +574,21 @@ async function reviewDismiss(event, target) {
 }
 
 async function reviewRecheck() {
-  await queueLedger(() => autoRelink());
+  await queueLedger(async () => {
+    const ledger = foundry.utils.deepClone(getLedger());
+    let fixed = 0;
+    for (const e of ledger) {
+      const holder = findHolders(e.awardId)[0];
+      const unidName = holder?.system.unidentified?.name;
+      if (holder && unidName && e.name === unidName && e.name !== realName(holder)) {
+        e.name = realName(holder);
+        fixed++;
+      }
+    }
+    if (fixed) await game.settings.set(MODULE_ID, "ledger", ledger);
+    const { relinked } = await autoRelink();
+    ui.notifications.info(`Magic Item Tracker: fixed ${fixed} unidentified name(s), re-linked ${relinked} item(s).`);
+  });
   this.render();
 }
 
@@ -583,7 +601,7 @@ async function reviewLink(event, target) {
   const options = orphans.map(e =>
     `<option value="${e.awardId}">${esc(e.name)} (${RARITY_LABELS[e.rarity]}, ${esc(e.recipientName)})</option>`).join("");
   const awardId = await foundry.applications.api.DialogV2.prompt({
-    window: { title: `Link ${item.name}` },
+    window: { title: `Link ${realName(item)}` },
     content: `<div class="form-group"><label>Ledger entry</label><select name="awardId">${options}</select></div>`,
     rejectClose: false,
     ok: { label: "Link", callback: (ev, button) => button.form.elements.namedItem("awardId").value }
@@ -593,8 +611,8 @@ async function reviewLink(event, target) {
     const ledger = foundry.utils.deepClone(getLedger());
     const e = ledger.find(x => x.awardId === awardId);
     if (!e) return;
-    const name = item.name.toLowerCase();
-    if (e.name.toLowerCase() !== name && !e.aliases.some(a => a.toLowerCase() === name)) e.aliases.push(item.name);
+    const name = realName(item).toLowerCase();
+    if (e.name.toLowerCase() !== name && !e.aliases.some(a => a.toLowerCase() === name)) e.aliases.push(realName(item));
     if (e.recipientId !== item.parent.id) {
       e.history.push({ fromName: e.recipientName, toName: item.parent.name, date: new Date().toISOString() });
       e.recipientId = item.parent.id;
@@ -712,7 +730,7 @@ async function reviewAwardAll() {
     for (const item of unflagged) {
       const kind = item.type === "consumable" ? "consumable" : "permanent";
       const quantity = kind === "consumable" ? Math.max(1, item.system.quantity ?? 1) : 1;
-      const entry = await addEntry({ name: item.name, rarity: item.system.rarity, kind, quantity, actor: item.parent, partyLevel: null });
+      const entry = await addEntry({ name: realName(item), rarity: item.system.rarity, kind, quantity, actor: item.parent, partyLevel: null });
       await item.setFlag(MODULE_ID, "awardId", entry.awardId);
     }
   });
